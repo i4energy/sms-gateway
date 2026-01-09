@@ -1,0 +1,15 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    remove|deconfigure)
+        # Stop the service if it's running
+        if [ -d /run/systemd/system ]; then
+            deb-systemd-invoke stop sms-gw.service >/dev/null || true
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

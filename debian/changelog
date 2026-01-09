@@ -1,0 +1,9 @@
+sms-gw (1.0.0-1) unstable; urgency=medium
+
+  * Initial release
+  * SMS Gateway daemon with HTTP and MQTT support
+  * Support for AT-compatible modems
+  * Rate limiting and retry logic
+  * Systemd service integration
+
+ -- System Administrator <admin@localhost>  Wed, 29 Oct 2025 00:00:00 +0000

@@ -1,0 +1,45 @@
+# Configuration for SMS Gateway daemon
+#
+# This file is sourced by the systemd service unit.
+# After making changes, restart the service:
+#   systemctl restart sms-gw
+
+# Serial port device for the modem
+PORT=/dev/ttyUSB2
+
+# Baud rate for serial communication
+BAUD=115200
+
+# SIM card PIN (leave empty if no PIN required)
+SIM_PIN=
+
+# HTTP server address (leave empty to disable HTTP)
+HTTP_ADDR=:8080
+
+# HTTP authentication token (leave empty to disable auth)
+HTTP_TOKEN=
+
+# MQTT broker URL (leave empty to disable MQTT)
+# Example: tcp://localhost:1883
+MQTT_BROKER=
+
+# MQTT client ID
+MQTT_CLIENT_ID=sms-gw-1
+
+# MQTT topic to subscribe to
+MQTT_TOPIC=sms/send
+
+# MQTT username (optional)
+MQTT_USERNAME=
+
+# MQTT password (optional)
+MQTT_PASSWORD=
+
+# Maximum SMS messages per minute (rate limiting)
+RATE_PER_MIN=30
+
+# Maximum retry attempts for failed messages
+MAX_RETRIES=3
+
+# Enable modem echo (0=off, 1=on). Default is 0 for cleaner log output.
+ECHO=0

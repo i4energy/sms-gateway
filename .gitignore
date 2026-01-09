@@ -1,0 +1,17 @@
+# Binaries
+sms-gw
+
+# Build artifacts
+*.deb
+*.buildinfo
+*.changes
+debian/.debhelper/
+debian/sms-gw/
+debian/files
+debian/*.log
+debian/*.substvars
+
+# Go
+*.o
+*.a
+*.so

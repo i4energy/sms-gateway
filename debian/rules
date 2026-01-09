@@ -1,0 +1,23 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+export GOCACHE=/tmp/go-build
+export GOPATH=/tmp/go
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	go build -o sms-gw sms-gw.go
+
+override_dh_auto_install:
+	install -D -m 0755 sms-gw $(CURDIR)/debian/sms-gw/usr/bin/sms-gw
+	install -D -m 0644 sms.conf $(CURDIR)/debian/sms-gw/lib/systemd/system/sms-gw.service
+	install -D -m 0644 debian/sms-gw.default $(CURDIR)/debian/sms-gw/etc/default/sms-gw
+
+override_dh_auto_clean:
+	rm -f sms-gw
+	dh_auto_clean

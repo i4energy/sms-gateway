@@ -1,0 +1,34 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    configure)
+        # Create smsgw user if it doesn't exist
+        if ! getent passwd smsgw > /dev/null; then
+            useradd --system --no-create-home --shell /bin/false \
+                    --comment "SMS Gateway daemon user" smsgw
+        fi
+
+        # Add smsgw user to dialout group for serial port access
+        usermod -a -G dialout smsgw || true
+
+        # Reload systemd daemon
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload || true
+        fi
+
+        echo ""
+        echo "SMS Gateway has been installed successfully!"
+        echo ""
+        echo "Next steps:"
+        echo "1. Edit /etc/default/sms-gw to configure your settings"
+        echo "2. Edit /lib/systemd/system/sms-gw.service if needed"
+        echo "3. Run: systemctl enable sms-gw"
+        echo "4. Run: systemctl start sms-gw"
+        echo ""
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

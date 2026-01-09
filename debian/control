@@ -1,0 +1,21 @@
+Source: sms-gw
+Section: net
+Priority: optional
+Maintainer: System Administrator <admin@localhost>
+Build-Depends: debhelper (>= 10), golang-go (>= 2:1.18~)
+Standards-Version: 4.1.2
+Homepage: https://github.com/yourusername/sms-gateway
+
+Package: sms-gw
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser
+Description: SMS Gateway daemon with HTTP and MQTT support
+ A lightweight SMS gateway daemon that accepts HTTP POST requests
+ and MQTT messages to send SMS via an AT-compatible modem.
+ .
+ Features:
+  - HTTP API for sending SMS messages
+  - MQTT topic subscription for message queuing
+  - Rate limiting and retry logic
+  - Systemd service integration
+  - Token-based authentication for HTTP
