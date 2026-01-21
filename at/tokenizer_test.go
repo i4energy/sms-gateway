@@ -136,7 +136,10 @@ func TestClassify(t *testing.T) {
 		{name: "ERROR response", input: "ERROR", expected: at.TypeFinal},
 		{name: "CME Error", input: "+CME ERROR: 30", expected: at.TypeFinal},
 		{name: "CMS Error", input: "+CMS ERROR: 500", expected: at.TypeFinal},
-		// {name: "NO CARRIER", input: "NO CARRIER", expected: at.TypeFinal},
+		{name: "NO CARRIER", input: "NO CARRIER", expected: at.TypeFinal},
+		{name: "NO DIALTONE", input: "NO DIALTONE", expected: at.TypeFinal},
+		{name: "BUSY", input: "BUSY", expected: at.TypeFinal},
+		{name: "NO ANSWER", input: "NO ANSWER", expected: at.TypeFinal},
 
 		// URCs
 		{name: "New message URC", input: "+CMTI: \"SM\",1", expected: at.TypeURC},

@@ -81,7 +81,7 @@ func (m *Modem) init(ctx context.Context) error {
 	_ = m.expectOK(ctx, "AT+CMEE=2") // ignore failure (not all modems support it)
 
 	// 4. Check SIM status
-	simStatus, err := m.query(ctx, "AT+CPIN?")
+	simStatus, err := m.exec(ctx, "AT+CPIN?")
 	if err != nil {
 		return fmt.Errorf("query SIM status: %w", err)
 	}
@@ -124,10 +124,6 @@ func (m *Modem) expectOK(ctx context.Context, cmd string) error {
 		return fmt.Errorf("unexpected response: %q", resp)
 	}
 	return nil
-}
-
-func (m *Modem) query(ctx context.Context, cmd string) (string, error) {
-	return m.exec(ctx, cmd)
 }
 
 func (m *Modem) waitForSIMReady(ctx context.Context) error {

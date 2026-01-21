@@ -39,7 +39,7 @@ func Classify(line string) ResponseType {
 
 	// Direct matches for final results
 	switch line {
-	case OK, ERROR:
+	case OK, ERROR, NoCarrier, NoDialtone, Busy, NoAnswer:
 		return TypeFinal
 	}
 
