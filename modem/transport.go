@@ -9,6 +9,8 @@ import (
 	"go.bug.st/serial"
 )
 
+//go:generate go tool mockgen -destination=mock.go -package=modem i4.energy/across/smsgw/modem Transport,Dialer
+
 // Transport represents an established, bidirectional byte stream to a GSM modem.
 //
 // A Transport is assumed to be already connected and ready for use. It provides

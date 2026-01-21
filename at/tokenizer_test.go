@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"i4.energy/across/sms_gw/at"
+	"i4.energy/across/smsgw/at"
 )
 
 func TestSplitter(t *testing.T) {

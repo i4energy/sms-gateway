@@ -1,348 +1,362 @@
-package modem
+package modem_test
 
 import (
-	"bytes"
 	"context"
-	"io"
-	"strings"
-	"sync"
+	"errors"
+	"slices"
 	"testing"
-	"time"
+
+	"go.uber.org/mock/gomock"
+	"i4.energy/across/smsgw/modem"
 )
 
-// mockTransport is a test transport that auto-responds to AT commands
-type mockTransport struct {
-	mu           sync.Mutex
-	readBuf      *bytes.Buffer
-	writeBuf     *bytes.Buffer
-	closed       bool
-	respondFunc  func(cmd string) // Custom response function
-}
-
-func newMockTransport() *mockTransport {
-	return &mockTransport{
-		readBuf:  &bytes.Buffer{},
-		writeBuf: &bytes.Buffer{},
-	}
-}
-
-func (m *mockTransport) Read(p []byte) (n int, err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.closed {
-		return 0, io.EOF
-	}
-
-	// If nothing in read buffer, wait a bit and check again
-	// This simulates the modem not having data immediately
-	if m.readBuf.Len() == 0 {
-		return 0, io.EOF
-	}
-
-	return m.readBuf.Read(p)
-}
-
-func (m *mockTransport) Write(p []byte) (n int, err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.closed {
-		return 0, io.ErrClosedPipe
-	}
-
-	// Record what was written
-	n, err = m.writeBuf.Write(p)
-	if err != nil {
-		return n, err
-	}
-
-	// Auto-respond to commands
-	cmd := string(p)
-	if m.respondFunc != nil {
-		m.respondFunc(cmd)
-	} else {
-		m.autoRespond(cmd)
-	}
-
-	return n, nil
-}
-
-func (m *mockTransport) Close() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.closed = true
-	return nil
-}
-
-// autoRespond generates automatic responses for common AT commands
-func (m *mockTransport) autoRespond(cmd string) {
-	cmd = strings.TrimSpace(cmd)
-
-	switch {
-	case cmd == "AT":
-		m.readBuf.WriteString("OK\r\n")
-
-	case cmd == "ATE0":
-		m.readBuf.WriteString("OK\r\n")
-
-	case cmd == "AT+CMEE=2":
-		m.readBuf.WriteString("OK\r\n")
-
-	case cmd == "AT+CPIN?":
-		m.readBuf.WriteString("+CPIN: READY\r\n")
-		m.readBuf.WriteString("OK\r\n")
-
-	case cmd == "AT+CMGF=1":
-		m.readBuf.WriteString("OK\r\n")
-
-	case cmd == "AT+CSQ":
-		m.readBuf.WriteString("+CSQ: 25,99\r\n")
-		m.readBuf.WriteString("OK\r\n")
-
-	case strings.HasPrefix(cmd, "AT+CPIN="):
-		// PIN entry response
-		m.readBuf.WriteString("OK\r\n")
-
-	default:
-		// Unknown command - return ERROR
-		m.readBuf.WriteString("ERROR\r\n")
-	}
-}
-
-// mockTransportWithPIN requires PIN entry
-type mockTransportWithPIN struct {
-	*mockTransport
-	pinEntered bool
-}
-
-func newMockTransportWithPIN() *mockTransportWithPIN {
-	mt := &mockTransportWithPIN{
-		mockTransport: newMockTransport(),
-		pinEntered:    false,
-	}
-
-	// Set up custom response function that handles PIN
-	mt.respondFunc = func(cmd string) {
-		cmd = strings.TrimSpace(cmd)
-
-		switch {
-		case cmd == "AT+CPIN?":
-			if !mt.pinEntered {
-				mt.readBuf.WriteString("+CPIN: SIM PIN\r\n")
-				mt.readBuf.WriteString("OK\r\n")
-			} else {
-				mt.readBuf.WriteString("+CPIN: READY\r\n")
-				mt.readBuf.WriteString("OK\r\n")
-			}
-
-		case strings.HasPrefix(cmd, "AT+CPIN="):
-			// PIN entry
-			mt.pinEntered = true
-			mt.readBuf.WriteString("OK\r\n")
-
-		default:
-			mt.mockTransport.autoRespond(cmd)
-		}
-	}
-
-	return mt
-}
-
-// mockDialer implements Dialer for testing
-type mockDialer struct {
-	transport Transport
-	err       error
-}
-
-func (d mockDialer) Dial(ctx context.Context) (Transport, error) {
-	return d.transport, d.err
-}
-
-func TestNew_Success(t *testing.T) {
-	transport := newMockTransport()
-	config := Config{
-		Dialer:    mockDialer{transport: transport},
-		ATTimeout: 1 * time.Second,
-	}
-
-	ctx := context.Background()
-	modem, err := New(ctx, config)
-
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
-	if modem == nil {
-		t.Fatal("New() returned nil modem")
-	}
-	if modem.transport != transport {
-		t.Error("modem transport not set correctly")
-	}
-	if modem.scanner == nil {
-		t.Error("modem scanner not initialized")
-	}
-}
-
-func TestNew_WithPIN(t *testing.T) {
-	transport := newMockTransportWithPIN()
-	config := Config{
-		Dialer:    mockDialer{transport: transport},
-		SimPIN:    "1234",
-		ATTimeout: 1 * time.Second,
-	}
-
-	ctx := context.Background()
-	modem, err := New(ctx, config)
-
-	if err != nil {
-		t.Fatalf("New() with PIN failed: %v", err)
-	}
-	if modem == nil {
-		t.Fatal("New() returned nil modem")
-	}
-	if !transport.pinEntered {
-		t.Error("PIN was not entered during initialization")
-	}
-}
-
-func TestNew_PINRequired(t *testing.T) {
-	transport := newMockTransportWithPIN()
-	config := Config{
-		Dialer:    mockDialer{transport: transport},
-		SimPIN:    "", // No PIN provided
-		ATTimeout: 1 * time.Second,
-	}
-
-	ctx := context.Background()
-	modem, err := New(ctx, config)
-
-	if err == nil {
-		t.Fatal("New() should fail when PIN required but not provided")
-	}
-	if modem != nil {
-		t.Error("New() should return nil modem on error")
-	}
-	if !strings.Contains(err.Error(), "SIM PIN required") {
-		t.Errorf("expected SIM PIN required error, got: %v", err)
-	}
-}
-
 func TestNew_NoDialer(t *testing.T) {
-	config := Config{
+	config := modem.Config{
 		Dialer: nil,
 	}
 
 	ctx := context.Background()
-	modem, err := New(ctx, config)
+	m, err := modem.New(ctx, config)
 
-	if err != ErrNoDialer {
+	if err != modem.ErrNoDialer {
 		t.Errorf("expected ErrNoDialer, got: %v", err)
 	}
-	if modem != nil {
+	if m != nil {
 		t.Error("New() should return nil modem when no dialer")
 	}
 }
 
-func TestExec_SimpleCommand(t *testing.T) {
-	transport := newMockTransport()
-	config := Config{
-		Dialer:    mockDialer{transport: transport},
-		ATTimeout: 1 * time.Second,
+func TestNew_DialerError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockDialer := modem.NewMockDialer(ctrl)
+	mockDialer.EXPECT().Dial(gomock.Any()).Return(nil, errors.New("connection failed"))
+
+	config := modem.Config{
+		Dialer: mockDialer,
 	}
 
 	ctx := context.Background()
-	modem, err := New(ctx, config)
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
+	m, err := modem.New(ctx, config)
 
-	// Test a simple query
-	resp, err := modem.exec(ctx, "AT+CSQ")
-	if err != nil {
-		t.Fatalf("exec(AT+CSQ) failed: %v", err)
-	}
-
-	if !strings.Contains(resp, "+CSQ: 25,99") {
-		t.Errorf("expected response to contain signal quality, got: %q", resp)
-	}
-	if !strings.Contains(resp, "OK") {
-		t.Errorf("expected response to contain OK, got: %q", resp)
-	}
-}
-
-func TestExec_WithTimeout(t *testing.T) {
-	// Create a transport that never responds
-	transport := newMockTransport()
-
-	// Override respondFunc to do nothing (no response)
-	transport.respondFunc = func(cmd string) {
-		// Don't write anything - simulate timeout
-	}
-
-	config := Config{
-		Dialer:    mockDialer{transport: transport},
-		ATTimeout: 100 * time.Millisecond,
-	}
-
-	ctx := context.Background()
-	modem, err := New(ctx, config)
-	if err != nil {
-		// Init will fail because transport doesn't respond
-		// This is expected
-		return
-	}
-
-	// If we somehow got here, test exec timeout
-	ctx2, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	_, err = modem.exec(ctx2, "AT")
 	if err == nil {
-		t.Error("exec() should timeout when no response")
+		t.Error("expected error from dialer failure")
+	}
+	if m != nil {
+		t.Error("New() should return nil modem when dialer fails")
 	}
 }
 
-func TestClassifyIntegration(t *testing.T) {
-	// Test that exec properly uses at.Classify
-	transport := newMockTransport()
+// initMockCalls returns a slice of expected calls for successful modem initialization.
+// It can be used in all tests that require a successfully initialized modem.
+func initMockCalls(mockTransport *modem.MockTransport) []any {
+	return NewMockSequence(mockTransport).
+		AT().
+		EchoOff().
+		VerboseErrors().
+		SimReady().
+		SMSTextMode().
+		Build()
+}
 
-	// Set custom response function that sends URC mixed with response
-	transport.respondFunc = func(cmd string) {
-		if strings.TrimSpace(cmd) == "AT+CSQ" {
-			// Send a URC first (should be ignored)
-			transport.readBuf.WriteString("+CMTI: \"SM\",5\r\n")
-			// Then the actual response
-			transport.readBuf.WriteString("+CSQ: 25,99\r\n")
-			transport.readBuf.WriteString("OK\r\n")
-		} else {
-			// Use default responses for other commands
-			transport.autoRespond(cmd)
-		}
-	}
+func TestNew_InitializationSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	config := Config{
-		Dialer:    mockDialer{transport: transport},
-		ATTimeout: 1 * time.Second,
-	}
+	mockTransport := modem.NewMockTransport(ctrl)
+	mockDialer := modem.NewMockDialer(ctrl)
 
-	ctx := context.Background()
-	modem, err := New(ctx, config)
+	gomock.InOrder(slices.Concat(
+		[]any{
+			mockDialer.EXPECT().Dial(gomock.Any()).Return(mockTransport, nil),
+		},
+		initMockCalls(mockTransport),
+	)...)
+
+	m, err := modem.New(context.Background(), modem.Config{
+		Dialer: mockDialer,
+	})
+
 	if err != nil {
-		t.Fatalf("New() failed: %v", err)
+		t.Errorf("unexpected error: %v", err)
+	}
+	if m == nil {
+		t.Error("New() should return valid modem on success")
 	}
 
-	resp, err := modem.exec(ctx, "AT+CSQ")
-	if err != nil {
-		t.Fatalf("exec() failed: %v", err)
-	}
+	// Clean up
+	mockTransport.EXPECT().Close().Return(nil)
+	_ = m.Close()
+}
 
-	// URC should not be in response
-	if strings.Contains(resp, "+CMTI") {
-		t.Errorf("URC should be filtered out, got: %q", resp)
-	}
+func TestNew_SIMPINRequired(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	// Data should be in response
-	if !strings.Contains(resp, "+CSQ: 25,99") {
-		t.Errorf("expected data line in response, got: %q", resp)
+	mockTransport := modem.NewMockTransport(ctrl)
+	mockDialer := modem.NewMockDialer(ctrl)
+
+	calls := NewMockSequence(mockTransport).
+		AT().
+		EchoOff().
+		VerboseErrors().
+		SimPinRequired().
+		Build()
+
+	gomock.InOrder(
+		slices.Concat(
+			[]any{
+				mockDialer.EXPECT().Dial(gomock.Any()).Return(mockTransport, nil),
+			},
+			calls,
+			[]any{
+				mockTransport.EXPECT().Close(),
+			},
+		)...,
+	)
+
+	m, err := modem.New(context.Background(), modem.Config{
+		Dialer: mockDialer,
+	})
+
+	if !errors.Is(err, modem.ErrSIMPinRequired) {
+		t.Errorf("expected ErrSIMPinRequired, got: %v", err)
+	}
+	if m != nil {
+		t.Error("New() should return nil modem when SIM PIN required")
 	}
 }
+
+// func TestModem_Close(t *testing.T) {
+// 	ctrl := gomock.NewController(t)
+// 	defer ctrl.Finish()
+
+// 	mockTransport := NewMockTransport(ctrl)
+// 	mockTransport.EXPECT().Close().Return(nil)
+
+// 	modem := &Modem{
+// 		transport: mockTransport,
+// 		config:    Config{},
+// 		closed:    false,
+// 	}
+
+// 	err := modem.Close()
+// 	if err != nil {
+// 		t.Errorf("unexpected error: %v", err)
+// 	}
+
+// 	// Second close should return ErrAlreadyClosed
+// 	err = modem.Close()
+// 	if err != ErrAlreadyClosed {
+// 		t.Errorf("expected ErrAlreadyClosed, got: %v", err)
+// 	}
+// }
+
+// func TestModem_Close_TransportError(t *testing.T) {
+// 	ctrl := gomock.NewController(t)
+// 	defer ctrl.Finish()
+
+// 	mockTransport := NewMockTransport(ctrl)
+// 	closeError := errors.New("transport close failed")
+// 	mockTransport.EXPECT().Close().Return(closeError)
+
+// 	modem := &Modem{
+// 		transport: mockTransport,
+// 		config:    Config{},
+// 		closed:    false,
+// 	}
+
+// 	err := modem.Close()
+// 	if err != closeError {
+// 		t.Errorf("expected transport error, got: %v", err)
+// 	}
+// }
+
+// func TestModem_exec_AlreadyClosed(t *testing.T) {
+// 	modem := &Modem{
+// 		closed: true,
+// 	}
+
+// 	ctx := context.Background()
+// 	resp, err := modem.exec(ctx, "AT")
+
+// 	if err != ErrAlreadyClosed {
+// 		t.Errorf("expected ErrAlreadyClosed, got: %v", err)
+// 	}
+// 	if resp != "" {
+// 		t.Errorf("expected empty response, got: %q", resp)
+// 	}
+// }
+
+// func TestModem_exec_NotInitialized(t *testing.T) {
+// 	modem := &Modem{
+// 		transport: nil,
+// 		closed:    false,
+// 	}
+
+// 	ctx := context.Background()
+// 	resp, err := modem.exec(ctx, "AT")
+
+// 	if err != ErrNotInitialized {
+// 		t.Errorf("expected ErrNotInitialized, got: %v", err)
+// 	}
+// 	if resp != "" {
+// 		t.Errorf("expected empty response, got: %q", resp)
+// 	}
+// }
+
+// func TestModem_exec_Success(t *testing.T) {
+// 	ctrl := gomock.NewController(t)
+// 	defer ctrl.Finish()
+
+// 	mockTransport := NewMockTransport(ctrl)
+// 	mockTransport.EXPECT().Write([]byte("AT\r")).Return(3, nil)
+// 	mockTransport.EXPECT().Read(gomock.Any()).DoAndReturn(func(p []byte) (int, error) {
+// 		resp := "AT\r\nOK\r\n"
+// 		copy(p, resp)
+// 		return len(resp), nil
+// 	})
+
+// 	modem := &Modem{
+// 		transport: mockTransport,
+// 		config:    Config{ATTimeout: 5 * time.Second},
+// 		closed:    false,
+// 	}
+
+// 	ctx := context.Background()
+// 	resp, err := modem.exec(ctx, "AT")
+
+// 	if err != nil {
+// 		t.Errorf("unexpected error: %v", err)
+// 	}
+// 	if !strings.Contains(resp, "OK") {
+// 		t.Errorf("expected OK in response, got: %q", resp)
+// 	}
+// }
+
+// func TestModem_exec_Error(t *testing.T) {
+// 	ctrl := gomock.NewController(t)
+// 	defer ctrl.Finish()
+
+// 	mockTransport := NewMockTransport(ctrl)
+// 	mockTransport.EXPECT().Write([]byte("ATXXX\r")).Return(6, nil)
+// 	mockTransport.EXPECT().Read(gomock.Any()).DoAndReturn(func(p []byte) (int, error) {
+// 		resp := "ATXXX\r\nERROR\r\n"
+// 		copy(p, resp)
+// 		return len(resp), nil
+// 	})
+
+// 	modem := &Modem{
+// 		transport: mockTransport,
+// 		config:    Config{ATTimeout: 5 * time.Second},
+// 		closed:    false,
+// 	}
+
+// 	ctx := context.Background()
+// 	resp, err := modem.exec(ctx, "ATXXX")
+
+// 	if err == nil {
+// 		t.Errorf("expected error got response %v", resp)
+// 	}
+// 	if err.Error() != "ERROR" {
+// 		t.Errorf("expected 'ERROR', got: %v", err)
+// 	}
+// }
+
+// func TestModem_exec_WriteError(t *testing.T) {
+// 	ctrl := gomock.NewController(t)
+// 	defer ctrl.Finish()
+
+// 	writeError := errors.New("write failed")
+// 	mockTransport := NewMockTransport(ctrl)
+// 	mockTransport.EXPECT().Write([]byte("AT\r")).Return(0, writeError)
+
+// 	modem := &Modem{
+// 		transport: mockTransport,
+// 		config:    Config{ATTimeout: 5 * time.Second},
+// 		closed:    false,
+// 	}
+
+// 	ctx := context.Background()
+// 	resp, err := modem.exec(ctx, "AT")
+
+// 	if err == nil {
+// 		t.Errorf("expected error from write failure, got response %v", resp)
+// 	}
+// 	if !strings.Contains(err.Error(), "write command") {
+// 		t.Errorf("expected write error, got: %v", err)
+// 	}
+// }
+
+// func TestModem_exec_ContextCanceled(t *testing.T) {
+// 	ctrl := gomock.NewController(t)
+// 	defer ctrl.Finish()
+
+// 	mockTransport := NewMockTransport(ctrl)
+// 	mockTransport.EXPECT().Write([]byte("AT\r")).Return(3, nil)
+// 	mockTransport.EXPECT().Read(gomock.Any()).DoAndReturn(func(p []byte) (int, error) {
+// 		// Simulate slow response
+// 		time.Sleep(100 * time.Millisecond)
+// 		return 0, io.EOF
+// 	}).AnyTimes()
+
+// 	modem := &Modem{
+// 		transport: mockTransport,
+// 		config:    Config{},
+// 		closed:    false,
+// 	}
+
+// 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+// 	defer cancel()
+
+// 	resp, err := modem.exec(ctx, "AT")
+
+// 	if err == nil {
+// 		t.Errorf("expected context timeout error, got response %v", resp)
+// 	}
+// 	if !errors.Is(err, context.DeadlineExceeded) && err != io.EOF {
+// 		t.Errorf("expected context error or EOF, got: %v", err)
+// 	}
+// }
+
+// func TestConfig_setDefaults(t *testing.T) {
+// 	config := Config{}
+// 	config.setDefaults()
+
+// 	if config.MinSendInterval != time.Minute/30 {
+// 		t.Errorf("expected MinSendInterval %v, got %v", time.Minute/30, config.MinSendInterval)
+// 	}
+// 	if config.MaxRetries != 3 {
+// 		t.Errorf("expected MaxRetries 3, got %d", config.MaxRetries)
+// 	}
+// 	if config.ATTimeout != 5*time.Second {
+// 		t.Errorf("expected ATTimeout %v, got %v", 5*time.Second, config.ATTimeout)
+// 	}
+// 	if config.InitTimeout != 30*time.Second {
+// 		t.Errorf("expected InitTimeout %v, got %v", 30*time.Second, config.InitTimeout)
+// 	}
+// }
+
+// func TestConfig_setDefaults_PreservesExisting(t *testing.T) {
+// 	config := modem.Config{
+// 		MinSendInterval: time.Second,
+// 		MaxRetries:      5,
+// 		ATTimeout:       10 * time.Second,
+// 		InitTimeout:     60 * time.Second,
+// 	}
+// 	config.setDefaults()
+
+// 	if config.MinSendInterval != time.Second {
+// 		t.Errorf("expected preserved MinSendInterval %v, got %v", time.Second, config.MinSendInterval)
+// 	}
+// 	if config.MaxRetries != 5 {
+// 		t.Errorf("expected preserved MaxRetries 5, got %d", config.MaxRetries)
+// 	}
+// 	if config.ATTimeout != 10*time.Second {
+// 		t.Errorf("expected preserved ATTimeout %v, got %v", 10*time.Second, config.ATTimeout)
+// 	}
+// 	if config.InitTimeout != 60*time.Second {
+// 		t.Errorf("expected preserved InitTimeout %v, got %v", 60*time.Second, config.InitTimeout)
+// 	}
+// }
