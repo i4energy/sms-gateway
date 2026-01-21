@@ -9,13 +9,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"i4.energy/across/sms_gw/at"
 )
 
 type Modem struct {
 	mu        sync.Mutex
 	transport Transport
 	config    Config
-	reader    *bufio.Reader
+	scanner   *bufio.Scanner
 }
 
 func New(ctx context.Context, config Config) (*Modem, error) {
@@ -29,10 +31,13 @@ func New(ctx context.Context, config Config) (*Modem, error) {
 		return nil, err
 	}
 
+	scanner := bufio.NewScanner(transport)
+	scanner.Split(at.Splitter)
+
 	m := &Modem{
 		config:    config,
 		transport: transport,
-		reader:    bufio.NewReaderSize(transport, 16*1024),
+		scanner:   scanner,
 	}
 
 	// Initialize the modem (e.g., send AT commands to set it up)
@@ -41,12 +46,14 @@ func New(ctx context.Context, config Config) (*Modem, error) {
 	return m, nil
 }
 
-func (m *Modem) readLine() (string, error) {
-	line, err := m.reader.ReadString('\n')
-	if err != nil {
-		return "", err
+func (m *Modem) readToken() (string, error) {
+	if !m.scanner.Scan() {
+		if err := m.scanner.Err(); err != nil {
+			return "", err
+		}
+		return "", io.EOF
 	}
-	return strings.TrimRight(line, "\r\n"), nil
+	return strings.TrimSpace(m.scanner.Text()), nil
 }
 
 func (m *Modem) init(ctx context.Context) error {
@@ -176,32 +183,44 @@ func (m *Modem) exec(ctx context.Context, cmd string) (string, error) {
 		default:
 		}
 
-		line, err := m.readLine()
+		token, err := m.readToken()
 		if err != nil {
 			return strings.Join(lines, "\n"), err
 		}
 
-		line = strings.TrimSpace(line)
-		if line == "" {
+		if token == "" {
 			continue
 		}
 
 		// Ignore echoed command if echo is enabled
-		if m.config.EchoOn && line == strings.TrimSpace(cmd) {
+		if m.config.EchoOn && token == strings.TrimSpace(cmd) {
 			continue
 		}
 
-		lines = append(lines, line)
+		// Classify the response using at.Classify
+		respType := at.Classify(token)
 
-		switch {
-		case line == "OK":
+		switch respType {
+		case at.TypeFinal:
+			lines = append(lines, token)
+			if token == at.OK {
+				return strings.Join(lines, "\n"), nil
+			}
+			// ERROR, +CME ERROR, +CMS ERROR, etc.
+			return strings.Join(lines, "\n"), errors.New(token)
+
+		case at.TypeData:
+			lines = append(lines, token)
+
+		case at.TypeURC:
+			// Handle URCs - could notify listeners or log
+			// For now, ignore URCs during command execution
+			continue
+
+		case at.TypePrompt:
+			// SMS prompt - return immediately for SMS handling
+			lines = append(lines, token)
 			return strings.Join(lines, "\n"), nil
-
-		case line == "ERROR":
-			return strings.Join(lines, "\n"), errors.New("modem returned ERROR")
-
-		case strings.HasPrefix(line, "+CME ERROR"):
-			return strings.Join(lines, "\n"), errors.New(line)
 		}
 	}
 }
