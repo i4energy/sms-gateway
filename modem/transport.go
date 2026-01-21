@@ -30,7 +30,7 @@ type Dialer interface {
 	// perform blocking operations and should respect cancellation and deadlines
 	// provided by the context. Dial returns an error if the transport cannot be
 	// established.
-	Dial() (Transport, error)
+	Dial(ctx context.Context) (Transport, error)
 }
 
 // SerialDialer opens a GSM modem over a serial port using go.bug.st/serial.

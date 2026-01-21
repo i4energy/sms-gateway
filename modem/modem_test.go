@@ -160,7 +160,7 @@ type mockDialer struct {
 	err       error
 }
 
-func (d mockDialer) Dial() (Transport, error) {
+func (d mockDialer) Dial(ctx context.Context) (Transport, error) {
 	return d.transport, d.err
 }
 

@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	gsm "i4.energy/across/sms_gw"
 	"i4.energy/across/sms_gw/at"
 )
 
@@ -102,7 +101,7 @@ func TestSplitter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var tokens []string
 			scanner := bufio.NewScanner(strings.NewReader(tt.input))
-			scanner.Split(gsm.ATSplitter)
+			scanner.Split(at.Splitter)
 
 			for scanner.Scan() {
 				tokens = append(tokens, scanner.Text())

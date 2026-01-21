@@ -26,7 +26,7 @@ func New(ctx context.Context, config Config) (*Modem, error) {
 		return nil, err
 	}
 
-	transport, err := config.Dialer.Dial()
+	transport, err := config.Dialer.Dial(ctx)
 	if err != nil {
 		return nil, err
 	}
