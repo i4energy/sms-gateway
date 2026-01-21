@@ -86,11 +86,6 @@ func (m *mockTransport) autoRespond(cmd string) {
 	case cmd == "ATE0":
 		m.readBuf.WriteString("OK\r\n")
 
-	case cmd == "ATE1":
-		// Echo the command back first
-		m.readBuf.WriteString("ATE1\r\n")
-		m.readBuf.WriteString("OK\r\n")
-
 	case cmd == "AT+CMEE=2":
 		m.readBuf.WriteString("OK\r\n")
 
@@ -169,7 +164,6 @@ func TestNew_Success(t *testing.T) {
 	config := Config{
 		Dialer:    mockDialer{transport: transport},
 		ATTimeout: 1 * time.Second,
-		EchoOn:    false,
 	}
 
 	ctx := context.Background()
@@ -189,32 +183,12 @@ func TestNew_Success(t *testing.T) {
 	}
 }
 
-func TestNew_WithEchoOn(t *testing.T) {
-	transport := newMockTransport()
-	config := Config{
-		Dialer:    mockDialer{transport: transport},
-		ATTimeout: 1 * time.Second,
-		EchoOn:    true,
-	}
-
-	ctx := context.Background()
-	modem, err := New(ctx, config)
-
-	if err != nil {
-		t.Fatalf("New() with echo failed: %v", err)
-	}
-	if modem == nil {
-		t.Fatal("New() returned nil modem")
-	}
-}
-
 func TestNew_WithPIN(t *testing.T) {
 	transport := newMockTransportWithPIN()
 	config := Config{
 		Dialer:    mockDialer{transport: transport},
 		SimPIN:    "1234",
 		ATTimeout: 1 * time.Second,
-		EchoOn:    false,
 	}
 
 	ctx := context.Background()
@@ -237,7 +211,6 @@ func TestNew_PINRequired(t *testing.T) {
 		Dialer:    mockDialer{transport: transport},
 		SimPIN:    "", // No PIN provided
 		ATTimeout: 1 * time.Second,
-		EchoOn:    false,
 	}
 
 	ctx := context.Background()
@@ -275,7 +248,6 @@ func TestExec_SimpleCommand(t *testing.T) {
 	config := Config{
 		Dialer:    mockDialer{transport: transport},
 		ATTimeout: 1 * time.Second,
-		EchoOn:    false,
 	}
 
 	ctx := context.Background()
@@ -310,7 +282,6 @@ func TestExec_WithTimeout(t *testing.T) {
 	config := Config{
 		Dialer:    mockDialer{transport: transport},
 		ATTimeout: 100 * time.Millisecond,
-		EchoOn:    false,
 	}
 
 	ctx := context.Background()
@@ -352,7 +323,6 @@ func TestClassifyIntegration(t *testing.T) {
 	config := Config{
 		Dialer:    mockDialer{transport: transport},
 		ATTimeout: 1 * time.Second,
-		EchoOn:    false,
 	}
 
 	ctx := context.Background()

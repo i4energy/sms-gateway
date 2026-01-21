@@ -72,13 +72,9 @@ func (m *Modem) init(ctx context.Context) error {
 		return fmt.Errorf("modem not responding: %w", err)
 	}
 
-	// 2. Echo handling
-	if m.config.EchoOn {
-		_ = m.expectOK(ctx, "ATE1") // best effort
-	} else {
-		if err := m.expectOK(ctx, "ATE0"); err != nil {
-			return fmt.Errorf("disable echo: %w", err)
-		}
+	// 2. Disable echo
+	if err := m.expectOK(ctx, "ATE0"); err != nil {
+		return fmt.Errorf("disable echo: %w", err)
 	}
 
 	// 3. Enable verbose errors (recommended)
@@ -199,11 +195,6 @@ func (m *Modem) exec(ctx context.Context, cmd string) (string, error) {
 		}
 
 		if token == "" {
-			continue
-		}
-
-		// Ignore echoed command if echo is enabled
-		if m.config.EchoOn && token == strings.TrimSpace(cmd) {
 			continue
 		}
 

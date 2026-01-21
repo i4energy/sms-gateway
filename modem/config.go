@@ -16,7 +16,6 @@ type Config struct {
 	SimPIN          string
 	MinSendInterval time.Duration
 	MaxRetries      int
-	EchoOn          bool
 	ATTimeout       time.Duration
 	InitTimeout     time.Duration
 }
