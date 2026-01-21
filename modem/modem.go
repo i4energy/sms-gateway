@@ -40,8 +40,18 @@ func New(ctx context.Context, config Config) (*Modem, error) {
 		scanner:   scanner,
 	}
 
-	// Initialize the modem (e.g., send AT commands to set it up)
-	transport.Write([]byte("AT\r\n"))
+	// Initialize the modem with proper timeout
+	initCtx := ctx
+	if m.config.InitTimeout > 0 {
+		var cancel context.CancelFunc
+		initCtx, cancel = context.WithTimeout(ctx, m.config.InitTimeout)
+		defer cancel()
+	}
+
+	if err := m.init(initCtx); err != nil {
+		transport.Close()
+		return nil, fmt.Errorf("initialize modem: %w", err)
+	}
 
 	return m, nil
 }
