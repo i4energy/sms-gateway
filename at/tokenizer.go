@@ -1,12 +1,20 @@
 package at
 
 import (
+	"bufio"
 	"bytes"
 	"strings"
 )
 
-// Splitter handles the "No Echo" scenario.
-// It splits by CRLF but also recognizes the SMS prompt.
+// Splitter is used for tokenizing AT command modem responses. It uses
+// the signature of bufio.SplitFunc so it can be directly used with bufio.Scanner.
+//
+// It splits the input by CRLF line endings and also
+// recognizes the SMS input prompt ("> ").
+//
+// Important: This splitter assumes "No Echo" mode (ATE0). If echo is enabled,
+// it would need modification to handle command echoes that precede the actual
+// response.
 //
 // The atEOF parameter indicates whether any more data will be available.
 // When true, any remaining data is returned as the final token.
@@ -30,6 +38,8 @@ func Splitter(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	}
 	return 0, nil, nil
 }
+
+var _ bufio.SplitFunc = Splitter
 
 // Classify identifies the nature of the modem output
 func Classify(line string) ResponseType {

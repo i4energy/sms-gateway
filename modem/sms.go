@@ -36,7 +36,6 @@ func (m *Modem) SendSMS(ctx context.Context, recipient, message string) error {
 		return fmt.Errorf("did not receive SMS prompt, got: %q", resp)
 	}
 
-
 	// Now send the message body and wait for confirmation
 	// This is essentially another exec(), but we just send the message text
 	messageCmd := message + at.CtrlZ

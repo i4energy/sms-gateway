@@ -353,7 +353,6 @@ func (m *Modem) Loop(ctx context.Context) error {
 				return io.EOF
 			}
 
-
 			// Classify the token to determine how to handle it
 			respType := at.Classify(token)
 
