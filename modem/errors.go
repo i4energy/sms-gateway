@@ -3,6 +3,12 @@ package modem
 import "errors"
 
 var (
+	// ErrNoDialer is returned when a Modem is constructed without a Dialer.
+	//
+	// This indicates a configuration error. A Dialer is required in order to
+	// establish a connection to the modem.
+	ErrNoDialer = errors.New("no dialer configured")
+
 	// ErrNilContext is returned when a nil context is passed to a function
 	// that requires a valid context.
 	//
