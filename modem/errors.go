@@ -9,6 +9,24 @@ var (
 	// establish a connection to the modem.
 	ErrNoDialer = errors.New("no dialer configured")
 
+	// ErrNotInitialized is returned when an operation is attempted on a Modem
+	// that has not been successfully initialized.
+	//
+	// This can occur if initialization failed or if the Modem was not created
+	// via NewModem.
+	ErrNotInitialized = errors.New("modem not initialized")
+
+	// ErrAlreadyClosed is returned when Close is called on a Modem that has
+	// already been closed.
+	ErrAlreadyClosed = errors.New("modem already closed")
+
+	// ErrSIMPinRequired is returned when the SIM card requires a PIN and no
+	// PIN was provided in the Config.
+	//
+	// Callers may handle this error specially (for example, by prompting
+	// the user for a PIN) and retry initialization.
+	ErrSIMPinRequired = errors.New("SIM PIN required")
+
 	// ErrNilContext is returned when a nil context is passed to a function
 	// that requires a valid context.
 	//
@@ -31,4 +49,9 @@ var (
 	// process is already using the port. The wrapped error provides the
 	// specific failure reason.
 	ErrPortOpenFail = errors.New("failed to open serial port")
+
+	// ErrLoopRunning is returned when Loop() is called while the modem loop is
+	// already running. This is used to prohibit concurrent execution of multiple
+	// loops, which could cause race conditions and undefined behavior.
+	ErrLoopRunning = errors.New("modem loop already running")
 )
