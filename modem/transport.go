@@ -36,14 +36,13 @@ type Dialer interface {
 // SerialDialer opens a GSM modem over a serial port using go.bug.st/serial.
 //
 // The returned serial.Port implements io.ReadWriteCloser and therefore satisfies
-// the Transport interface. :contentReference[oaicite:1]{index=1}
+// the Transport interface.
 type SerialDialer struct {
 	// PortName is the OS device path (e.g. "/dev/ttyUSB0", "COM3").
 	PortName string
 
-	// Mode configures the serial port (baud, parity, etc.). If nil, the library
-	// defaults are used (commonly 9600 8N1). :contentReference[oaicite:2]{index=2}
-	Mode *serial.Mode
+	// BaudRate is the serial communication speed (e.g. 115200). It defaults to 115200 if not set.
+	BaudRate int
 }
 
 // Dial opens the serial port. If ctx is canceled before the open completes,
@@ -52,6 +51,9 @@ type SerialDialer struct {
 func (d SerialDialer) Dial(ctx context.Context) (Transport, error) {
 	if d.PortName == "" {
 		return nil, ErrMissingPort
+	}
+	if d.BaudRate == 0 {
+		d.BaudRate = 115200
 	}
 	if ctx == nil {
 		return nil, ErrNilContext
@@ -66,8 +68,11 @@ func (d SerialDialer) Dial(ctx context.Context) (Transport, error) {
 
 	// serial.Open does not accept a context, so we run it in a goroutine
 	// and race it against ctx cancellation.
+	mode := &serial.Mode{
+		BaudRate: d.BaudRate,
+	}
 	go func() {
-		p, err := serial.Open(d.PortName, d.Mode) // :contentReference[oaicite:3]{index=3}
+		p, err := serial.Open(d.PortName, mode)
 		ch <- result{p: p, err: err}
 	}()
 
